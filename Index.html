@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Key System Gamer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+*{box-sizing:border-box;font-family:Arial}
+body{margin:0;background:#05070f;color:#fff}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px;background:#0a0f1f}
+.menu-btn{background:none;border:none;color:#0ff;font-size:18px}
+.logout{font-size:12px;padding:5px 10px;border:1px solid #f55;background:none;color:#f55;border-radius:6px}
+.sidebar{position:fixed;top:0;left:-260px;width:260px;height:100%;background:#070b18;padding:20px;transition:.3s;z-index:10}
+.sidebar.active{left:0}
+.sidebar button{width:100%;margin:5px 0;padding:10px;background:#0c1225;color:#fff;border:none;border-radius:8px;text-align:left}
+.content{padding:15px}
+.card{background:#0b1022;padding:12px;border-radius:10px;margin:8px 0}
+input,select,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}
+input,select{background:#111;color:#fff}
+button.action{background:#0aa}
+.copy{font-size:12px;background:#222;color:#0ff;padding:4px;border-radius:4px}
+small{color:#aaa}
+</style>
+</head>
+<body>
+
+<header>
+<button class="menu-btn" onclick="toggleMenu()">☰</button>
+<div id="userInfo"></div>
+<button class="logout" onclick="logout()">SAIR</button>
+</header>
+
+<div class="sidebar" id="menu"></div>
+<div class="content" id="content"></div>
+
+<script>
+/* ================= URL AFILIADO ================= */
+const params=new URLSearchParams(window.location.search)
+const refLink=params.get('ref')
+
+/* ================= DADOS ================= */
+let users=JSON.parse(localStorage.getItem('users'))||{
+ admin:{pass:'admin123',role:'admin',credits:Infinity,history:[],affiliate:'admin',referred:[],parent:null}
+}
+let keys=JSON.parse(localStorage.getItem('keys'))||[]
+let currentUser=localStorage.getItem('currentUser')
+let role=currentUser?users[currentUser].role:null
+
+const PLANS={
+ '24h':{h:24,c:1},
+ '3d':{h:72,c:5},
+ '5d':{h:120,c:10},
+ '15d':{h:360,c:20},
+ '30d':{h:720,c:30}
+}
+
+/* ================= UTIL ================= */
+function save(){
+ localStorage.setItem('users',JSON.stringify(users))
+ localStorage.setItem('keys',JSON.stringify(keys))
+}
+function atualizarTopo(){
+ userInfo.innerText=currentUser+' | Créditos: '+(users[currentUser].credits===Infinity?'∞':users[currentUser].credits)
+}
+
+/* ================= MENU ================= */
+function toggleMenu(){menu.classList.toggle('active')}
+function closeMenu(){menu.classList.remove('active')}
+document.addEventListener('click',e=>{
+ if(!menu.contains(e.target)&&!e.target.classList.contains('menu-btn')) menu.classList.remove('active')
+})
+
+/* ================= LOGIN ================= */
+if(!currentUser) loginPage()
+else init()
+
+function loginPage(){
+ document.querySelector('header').style.display='none'
+ content.innerHTML=`
+ <div class="card">
+ <h3>Login</h3>
+ <input id="lu" placeholder="Usuário">
+ <input id="lp" type="password" placeholder="Senha">
+ <button class="action" onclick="login()">Entrar</button>
+ <hr>
+ <h3>Registrar</h3>
+ <input id="ru" placeholder="Usuário">
+ <input id="rp" type="password" placeholder="Senha">
+ ${refLink?`<small>Afiliado de: <b>${refLink}</b></small>`:''}
+ <button onclick="register()">Registrar</button>
+ </div>`
+}
+
+function login(){
+ if(!users[lu.value]||users[lu.value].pass!==lp.value) return alert('Login inválido')
+ currentUser=lu.value
+ localStorage.setItem('currentUser',currentUser)
+ location.reload()
+}
+
+function register(){
+ if(users[ru.value]||ru.value==='admin') return alert('Usuário inválido')
+ users[ru.value]={pass:rp.value,role:'user',credits:5,history:[],affiliate:ru.value,referred:[],parent:(refLink&&users[refLink])?refLink:null}
+ if(users[ru.value].parent) users[users[ru.value].parent].referred.push(ru.value)
+ save();alert('Registrado com sucesso!')
+}
+
+/* ================= APP ================= */
+function init(){
+ document.querySelector('header').style.display='flex'
+ atualizarTopo()
+ buildMenu()
+ dashboard()
+}
+
+function buildMenu(){
+ if(role==='admin'){
+ menu.innerHTML=`
+ <button onclick="dashboard();closeMenu()">📊 Dashboard</button>
+ <button onclick="generatePage();closeMenu()">⚡ Gerar Key</button>
+ <button onclick="customKeyPage();closeMenu()">🎨 Personalizar Key</button>
+ <button onclick="keysPage();closeMenu()">🔑 Gerenciar Keys</button>
+ <button onclick="usersPage();closeMenu()">👥 Usuários</button>
+ <button onclick="affiliatePage();closeMenu()">🤝 Afiliados</button>`
+ }else{
+ menu.innerHTML=`
+ <button onclick="dashboard();closeMenu()">📊 Dashboard</button>
+ <button onclick="generatePage();closeMenu()">⚡ Gerar Key</button>
+ <button onclick="customKeyPage();closeMenu()">🎨 Personalizar Key</button>
+ <button onclick="keysPage();closeMenu()">🔑 Minhas Keys</button>
+ <button onclick="affiliatePage();closeMenu()">🤝 Afiliados</button>
+ <button onclick="historyPage();closeMenu()">💰 Histórico</button>`
+ }
+}
+
+/* ================= DASHBOARD ================= */
+function dashboard(){
+ let total=keys.filter(k=>k.owner===currentUser).length
+ content.innerHTML=`<div class="card"><h3>Dashboard</h3>Keys geradas: ${total}</div>`
+}
+
+/* ================= GERAR KEY ================= */
+function generatePage(){
+ content.innerHTML=`
+ <div class="card">
+ <h3>Gerar Key</h3>
+ <select id="plan">${Object.keys(PLANS).map(p=>`<option>${p}</option>`)}</select>
+ <button class="action" onclick="generate()">Gerar</button>
+ </div>`
+}
+function generate(){
+ let p=PLANS[plan.value]
+ if(role!=='admin' && users[currentUser].credits<p.c) return alert('Sem créditos')
+ keys.push({key:'KEY-'+crypto.randomUUID().slice(0,8).toUpperCase(),owner:currentUser,created:Date.now(),expires:Date.now()+p.h*3600000,paused:false,duration:p.h*3600000})
+ if(role!=='admin') users[currentUser].credits-=p.c
+ save();atualizarTopo();alert('Key criada')
+}
+
+/* ================= PERSONALIZAR ================= */
+function customKeyPage(){
+ content.innerHTML=`
+ <div class="card">
+ <h3>Personalizar Key</h3>
+ <input id="prefix" placeholder="Prefixo ex: VIP-">
+ <select id="plan">${Object.keys(PLANS).map(p=>`<option>${p}</option>`)}</select>
+ <button class="action" onclick="generateCustom()">Gerar</button>
+ </div>`
+}
+function generateCustom(){
+ let p=PLANS[plan.value]
+ if(role!=='admin' && users[currentUser].credits<p.c) return alert('Sem créditos')
+ keys.push({key:(prefix.value||'KEY-')+crypto.randomUUID().slice(0,8).toUpperCase(),owner:currentUser,created:Date.now(),expires:Date.now()+p.h*3600000,paused:false,duration:p.h*3600000})
+ if(role!=='admin') users[currentUser].credits-=p.c
+ save();atualizarTopo();alert('Key personalizada criada')
+}
+
+/* ================= KEYS ================= */
+function status(k){
+ if(k.paused) return 'PAUSADA'
+ if(Date.now()>k.expires) return 'EXPIRADA'
+ let d=k.expires-Date.now()
+ return `ATIVA ⏳ ${Math.floor(d/3600000)}h ${Math.floor(d%3600000/60000)}m ${Math.floor(d%60000/1000)}s`
+}
+function keysPage(){
+ content.innerHTML='<h3>Keys</h3>'
+ keys.filter(k=>role==='admin'||k.owner===currentUser).forEach(k=>{
+ content.innerHTML+=`
+ <div class="card">
+ <b>${k.key}</b><br>${status(k)}
+ <button class="copy" onclick="navigator.clipboard.writeText('${k.key}')">Copiar</button>
+ ${(k.owner===currentUser||role==='admin')?`
+ <button onclick="k.paused=!k.paused;save();keysPage()">⏸</button>
+ <button onclick="k.expires=Date.now()+k.duration;save();keysPage()">🔄</button>`:''}
+ </div>`
+ })
+}
+
+/* ================= AFILIADOS ================= */
+function affiliatePage(){
+ let u=users[currentUser]
+ content.innerHTML=`
+ <div class="card">
+ <h3>Afiliados</h3>
+ <p>Seu link:</p>
+ <small>${location.origin+location.pathname}?ref=${currentUser}</small>
+ <hr>
+ </div>`
+ u.referred.forEach(a=>{
+ content.innerHTML+=`
+ <div class="card">
+ ${a} | Créditos: ${users[a].credits}
+ <input type="number" placeholder="Enviar créditos"
+ onchange="sendAffiliateCredits('${a}',this.value)">
+ </div>`
+ })
+}
+function sendAffiliateCredits(a,amount){
+ amount=Number(amount)
+ if(amount<=0) return
+ if(role!=='admin' && users[currentUser].credits<amount) return alert('Sem créditos')
+ if(role!=='admin') users[currentUser].credits-=amount
+ users[a].credits+=amount
+ users[currentUser].history.push({date:Date.now(),value:-amount,desc:'Enviou créditos para '+a})
+ users[a].history.push({date:Date.now(),value:+amount,desc:'Recebeu créditos de '+currentUser})
+ save();atualizarTopo();affiliatePage()
+}
+
+/* ================= HISTÓRICO ================= */
+function historyPage(){
+ content.innerHTML='<h3>Histórico</h3>'
+ users[currentUser].history.forEach(h=>{
+ content.innerHTML+=`<div class="card">${h.desc} (${h.value})</div>`
+ })
+}
+
+/* ================= ADM USUÁRIOS ================= */
+function usersPage(){
+ content.innerHTML=`
+ <div class="card">
+ <h3>Adicionar Usuário</h3>
+ <input id="newUser" placeholder="Usuário">
+ <input id="newPass" type="password" placeholder="Senha">
+ <input id="newCredits" type="number" placeholder="Créditos iniciais">
+ <button class="action" onclick="addUser()">Criar Usuário</button>
+ </div>
+ <h3>Usuários</h3>`
+ Object.keys(users).forEach(u=>{
+ if(users[u].role==='admin')return
+ content.innerHTML+=`
+ <div class="card">
+ ${u} | Créditos: ${users[u].credits}
+ <input type="number" placeholder="+ créditos" onchange="users['${u}'].credits+=Number(this.value);save()">
+ <button onclick="delete users['${u}'];save();usersPage()">🚫 Expulsar</button>
+ </div>`
+ })
+}
+function addUser(){
+ if(!newUser.value||!newPass.value) return alert('Preencha tudo')
+ if(users[newUser.value]||newUser.value==='admin') return alert('Usuário inválido')
+ users[newUser.value]={pass:newPass.value,role:'user',credits:Number(newCredits.value||0),history:[],affiliate:newUser.value,referred:[],parent:null}
+ save();alert('Usuário criado');usersPage()
+}
+
+/* ================= LOGOUT ================= */
+function logout(){
+ localStorage.removeItem('currentUser')
+ location.reload()
+}
+
+/* ================= TIMER ================= */
+setInterval(()=>{if(content.innerHTML.includes('Keys'))keysPage()},1000)
+</script>
+
+</body>
+  </html>
